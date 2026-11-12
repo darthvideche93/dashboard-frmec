@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FRMEC - Cobertura Nacional de Inspectores | Perú</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- D3.js & TopoJSON para renderizado vectorial preciso del mapa del Perú -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+  <!-- Google Fonts: Inter y Oswald/Barlow Condensed para números estilo infografía -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .font-infographic {
+      font-family: 'Barlow Condensed', sans-serif;
+      letter-spacing: -0.02em;
+    }
+    /* Transiciones suaves para departamentos y líneas infográficas */
+    .dept-path {
+      transition: fill 0.25s ease, opacity 0.25s ease, stroke-width 0.2s ease, filter 0.2s ease;
+      cursor: pointer;
+    }
+    .dept-path:hover {
+      filter: brightness(0.95);
+    }
+    .callout-group {
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      cursor: pointer;
+    }
+    .callout-group.dimmed {
+      opacity: 0.22;
+    }
+    .callout-group.active-highlight {
+      filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.14));
+    }
+    /* Scrollbar limpio para tabla */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-slate-900 selection:text-white">
+
+  <!-- Barra Superior Ejecutiva -->
+  <header class="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="flex items-center gap-3.5">
+        <div class="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-lg tracking-tight shadow-sm shrink-0">
+          FRMEC
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+              Cobertura Nacional de Inspectores
+            </h1>
+            <span class="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Operación Activa
+            </span>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-500">
+            Distribución geográfica por departamento, sedes operativas y oportunidades de expansión en Perú
+          </p>
+        </div>
+      </div>
+
+      <!-- Controles Globales de Visualización -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Selector Etiqueta: Porcentaje vs Cantidad -->
+        <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/70" role="group" aria-label="Formato de etiquetas">
+          <button id="btn-mode-pct" onclick="setDisplayMode('pct')"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-slate-900 shadow-xs">
+            Porcentaje (%)
+          </button>
+          <button id="btn-mode-count" onclick="setDisplayMode('count')"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900">
+            Inspectores (N°)
+          </button>
+        </div>
+
+        <!-- Botón Reset Selección -->
+        <button id="btn-reset" onclick="resetSelection()"
+          class="hidden items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+          Limpiar selección
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Paneles Resumen (KPIs) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- KPI 1 -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total de Inspectores</p>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-3xl font-extrabold text-slate-900">15</span>
+            <span class="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">100% activos</span>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-500">Distribuidos en 8 ciudades sede</p>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-slate-900/5 text-slate-800 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- KPI 2 -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Departamentos con Cobertura</p>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-3xl font-extrabold text-slate-900">8 <span class="text-lg font-semibold text-slate-400">de 24</span></span>
+            <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">33.3%</span>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-500">Costa, Sierra Norte, Centro y Sur</p>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- KPI 3 -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Departamentos por Expandir</p>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-3xl font-extrabold text-slate-900">16</span>
+            <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">66.7% territorio</span>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-500">Oportunidad de crecimiento regional</p>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- KPI 4 -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs flex items-start justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Sede Principal</p>
+          <div class="mt-2 flex items-baseline gap-2">
+            <span class="text-3xl font-extrabold text-slate-900">Lima</span>
+            <span class="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-full">20.0%</span>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-500">3 inspectores en Lima Metropolitana</p>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- Grid Principal: Mapa Infográfico (Izquierda/Centro) + Panel Detalle y Tabla (Derecha) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- Contenedor del Mapa Infográfico del Perú -->
+      <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-7 relative overflow-hidden">
+        
+        <!-- Encabezado y Filtro de Cobertura del Mapa -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2 relative z-10">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black tracking-tight text-slate-900 uppercase">
+              Mapa de Cobertura Perú
+            </h2>
+            <p class="text-xs text-slate-500">
+              Haz clic o pasa el cursor sobre cualquier departamento para inspeccionar detalles
+            </p>
+          </div>
+
+          <!-- Filtro rápido de estado en el mapa -->
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200/70 self-start sm:self-auto">
+            <button onclick="setCoverageFilter('all')" id="filter-map-all"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-slate-900 shadow-xs">
+              Todos (24)
+            </button>
+            <button onclick="setCoverageFilter('covered')" id="filter-map-covered"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900">
+              Con Cobertura (8)
+            </button>
+            <button onclick="setCoverageFilter('expansion')" id="filter-map-expansion"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900">
+              Expansión (16)
+            </button>
+          </div>
+        </div>
+
+        <!-- Lienzo SVG Infográfico (Estilo limpio sobre blanco como imagen de referencia) -->
+        <div id="map-wrapper" class="relative w-full flex items-center justify-center my-1">
+          <!-- Indicador de carga inicial -->
+          <div id="map-loader" class="py-32 flex flex-col items-center justify-center text-slate-400">
+            <div class="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin mb-3"></div>
+            <span class="text-xs font-medium">Cargando cartografía departamental del Perú...</span>
+          </div>
+
+          <!-- SVG Responsivo -->
+          <svg id="peru-infographic-svg" viewBox="0 0 920 690" class="w-full h-auto max-h-[670px] hidden select-none" role="img" aria-label="Mapa infográfico de cobertura de inspectores FRMEC en Perú">
+            <defs>
+              <filter id="mapShadow" x="-10%" y="-10%" width="120%" height="120%">
+                <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.07"/>
+              </filter>
+            </defs>
+            <!-- Grupo de Departamentos -->
+            <g id="departments-layer" filter="url(#mapShadow)"></g>
+            <!-- Grupo de Líneas Conectoras y Etiquetas Infográficas -->
+            <g id="callouts-layer"></g>
+          </svg>
+
+          <!-- Tooltip Flotante -->
+          <div id="map-tooltip"
+            class="pointer-events-none fixed z-50 hidden bg-slate-900/95 backdrop-blur-xs text-white px-3.5 py-2.5 rounded-xl shadow-xl border border-slate-700/60 text-xs transition-opacity duration-150">
+          </div>
+        </div>
+
+        <!-- Leyenda Inferior del Mapa -->
+        <div class="mt-3 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+              <span class="flex -space-x-1">
+                <span class="w-3 h-3 rounded-full bg-[#e63946] ring-2 ring-white"></span>
+                <span class="w-3 h-3 rounded-full bg-[#0ea5e9] ring-2 ring-white"></span>
+                <span class="w-3 h-3 rounded-full bg-[#1e3a8a] ring-2 ring-white"></span>
+                <span class="w-3 h-3 rounded-full bg-[#059669] ring-2 ring-white"></span>
+              </span>
+              <span class="font-medium text-slate-700">Cobertura Activa (8 Dptos. / 15 Inspectores)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-xs bg-[#e2e8f0] border border-slate-300 inline-block"></span>
+              <span>Oportunidad de Expansión (16 Dptos. / 0 Inspectores)</span>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400">24 Departamentos + Prov. Const. del Callao</span>
+        </div>
+      </div>
+
+      <!-- Panel Derecho: Ficha de Inspección + Tabla Interactiva -->
+      <div class="lg:col-span-5 space-y-5">
+
+        <!-- Tarjeta de Detalle del Departamento Seleccionado -->
+        <div id="detail-card" class="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 transition-all">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Detalle Regional</span>
+            <span id="detail-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+              Vista Nacional
+            </span>
+          </div>
+
+          <div id="detail-content">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-lg font-extrabold text-slate-900">Consolidado Nacional FRMEC</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Selecciona un departamento en el mapa o en la tabla</p>
+              </div>
+              <div class="text-right">
+                <span class="text-2xl font-black text-slate-900">15</span>
+                <span class="block text-[11px] font-medium text-slate-400">Inspectores</span>
+              </div>
+            </div>
+
+            <!-- Barra de distribución visual de los 8 departamentos -->
+            <div class="mt-4">
+              <div class="flex justify-between text-[11px] font-medium text-slate-500 mb-1.5">
+                <span>Distribución por sede activa</span>
+                <span>100% (15 insp.)</span>
+              </div>
+              <div id="distribution-bar" class="w-full h-3 rounded-full overflow-hidden flex bg-slate-100 gap-0.5"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla Interactiva de Departamentos -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex flex-col">
+          <div class="p-4 sm:p-5 border-b border-slate-100 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
+                Desglose por Departamento
+              </h3>
+              <span id="table-counter" class="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                24 departamentos
+              </span>
+            </div>
+
+            <!-- Buscador y Filtro de Tabla -->
+            <div class="flex flex-col sm:flex-row gap-2">
+              <div class="relative flex-1">
+                <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="search-input" type="text" placeholder="Buscar departamento o ciudad..."
+                  oninput="renderTable()"
+                  class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all" />
+              </div>
+              <select id="status-select" onchange="onStatusSelectChange(this.value)"
+                class="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10">
+                <option value="all">Todos los estados</option>
+                <option value="covered">Cobertura Activa (8)</option>
+                <option value="expansion">Oportunidad Expansión (16)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Contenedor con Scroll de Tabla -->
+          <div class="overflow-x-auto max-h-[410px] overflow-y-auto">
+            <table class="w-full text-left border-collapse">
+              <thead class="bg-slate-50/90 backdrop-blur-xs sticky top-0 z-10 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="py-3 px-4">Departamento</th>
+                  <th class="py-3 px-3">Ciudad Sede</th>
+                  <th class="py-3 px-3 text-center">Insp.</th>
+                  <th class="py-3 px-3 text-right">% Total</th>
+                  <th class="py-3 px-4 text-right">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="departments-table-body" class="divide-y divide-slate-100 text-xs">
+                <!-- Filas generadas por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. BASE DE DATOS DE COBERTURA NACIONAL DE INSPECTORES FRMEC
+     * ============================================================================
+     * Exactamente 15 inspectores distribuidos en 8 departamentos activos y
+     * 16 departamentos en oportunidad de expansión (0 inspectores).
+     */
+    const TOTAL_INSPECTORS = 15;
+
+    // Configuración detallada de los 8 departamentos con cobertura activa
+    // Incluye paleta vibrante distintiva y coordenadas de anclaje infográfico
+    const ACTIVE_COVERAGE = {
+      "PIURA": {
+        name: "Piura",
+        city: "Piura",
+        inspectors: 2,
+        pct: "13.3%",
+        color: "#e63946", // Coral / Rojo vibrante
+        side: "left",
+        labelY: 135,
+        anchorOffset: [-6, -2]
+      },
+      "LAMBAYEQUE": {
+        name: "Lambayeque",
+        city: "Chiclayo",
+        inspectors: 2,
+        pct: "13.3%",
+        color: "#0ea5e9", // Turquesa / Celeste intenso
+        side: "left",
+        labelY: 220,
+        anchorOffset: [-3, 2]
+      },
+      "LA LIBERTAD": {
+        name: "La Libertad",
+        city: "Trujillo",
+        inspectors: 2,
+        pct: "13.3%",
+        color: "#f97316", // Naranja vibrante
+        side: "left",
+        labelY: 305,
+        anchorOffset: [-4, 4]
+      },
+      "LIMA": {
+        name: "Lima",
+        city: "Lima",
+        inspectors: 3,
+        pct: "20.0%",
+        color: "#1e3a8a", // Azul marino ejecutivo
+        side: "left",
+        labelY: 430,
+        anchorOffset: [-4, 4]
+      },
+      "ICA": {
+        name: "Ica",
+        city: "Ica",
+        inspectors: 2,
+        pct: "13.3%",
+        color: "#eab308", // Dorado / Amarillo intenso
+        side: "left",
+        labelY: 530,
+        anchorOffset: [-2, 3]
+      },
+      "JUNIN": {
+        name: "Junín",
+        city: "Huancayo",
+        inspectors: 1,
+        pct: "6.7%",
+        color: "#6366f1", // Índigo
+        side: "right",
+        labelY: 375,
+        anchorOffset: [6, 0]
+      },
+      "CUSCO": {
+        name: "Cusco",
+        city: "Cusco",
+        inspectors: 1,
+        pct: "6.7%",
+        color: "#059669", // Verde esmeralda
+        side: "right",
+        labelY: 470,
+        anchorOffset: [8, 4]
+      },
+      "AREQUIPA": {
+        name: "Arequipa",
+        city: "Arequipa",
+        inspectors: 2,
+        pct: "13.3%",
+        color: "#be185d", // Magenta / Vino
+        side: "right",
+        labelY: 575,
+        anchorOffset: [6, 4]
+      }
+    };
+
+    // Lista completa de los 24 departamentos del Perú (más mapeo para Callao)
+    const ALL_DEPARTMENTS_LIST = [
+      { key: "LIMA", name: "Lima", city: "Lima", inspectors: 3, pct: "20.0%", active: true },
+      { key: "PIURA", name: "Piura", city: "Piura", inspectors: 2, pct: "13.3%", active: true },
+      { key: "LA LIBERTAD", name: "La Libertad", city: "Trujillo", inspectors: 2, pct: "13.3%", active: true },
+      { key: "LAMBAYEQUE", name: "Lambayeque", city: "Chiclayo", inspectors: 2, pct: "13.3%", active: true },
+      { key: "ICA", name: "Ica", city: "Ica", inspectors: 2, pct: "13.3%", active: true },
+      { key: "AREQUIPA", name: "Arequipa", city: "Arequipa", inspectors: 2, pct: "13.3%", active: true },
+      { key: "CUSCO", name: "Cusco", city: "Cusco", inspectors: 1, pct: "6.7%", active: true },
+      { key: "JUNIN", name: "Junín", city: "Huancayo", inspectors: 1, pct: "6.7%", active: true },
+      // 16 Departamentos sin inspectores (Oportunidades de Expansión)
+      { key: "AMAZONAS", name: "Amazonas", city: "Chachapoyas", inspectors: 0, pct: "0.0%", active: false },
+      { key: "ANCASH", name: "Áncash", city: "Huaraz", inspectors: 0, pct: "0.0%", active: false },
+      { key: "APURIMAC", name: "Apurímac", city: "Abancay", inspectors: 0, pct: "0.0%", active: false },
+      { key: "AYACUCHO", name: "Ayacucho", city: "Ayacucho", inspectors: 0, pct: "0.0%", active: false },
+      { key: "CAJAMARCA", name: "Cajamarca", city: "Cajamarca", inspectors: 0, pct: "0.0%", active: false },
+      { key: "HUANCAVELICA", name: "Huancavelica", city: "Huancavelica", inspectors: 0, pct: "0.0%", active: false },
+      { key: "HUANUCO", name: "Huánuco", city: "Huánuco", inspectors: 0, pct: "0.0%", active: false },
+      { key: "LORETO", name: "Loreto", city: "Iquitos", inspectors: 0, pct: "0.0%", active: false },
+      { key: "MADRE DE DIOS", name: "Madre de Dios", city: "Puerto Maldonado", inspectors: 0, pct: "0.0%", active: false },
+      { key: "MOQUEGUA", name: "Moquegua", city: "Moquegua", inspectors: 0, pct: "0.0%", active: false },
+      { key: "PASCO", name: "Pasco", city: "Cerro de Pasco", inspectors: 0, pct: "0.0%", active: false },
+      { key: "PUNO", name: "Puno", city: "Puno", inspectors: 0, pct: "0.0%", active: false },
+      { key: "SAN MARTIN", name: "San Martín", city: "Moyobamba", inspectors: 0, pct: "0.0%", active: false },
+      { key: "TACNA", name: "Tacna", city: "Tacna", inspectors: 0, pct: "0.0%", active: false },
+      { key: "TUMBES", name: "Tumbes", city: "Tumbes", inspectors: 0, pct: "0.0%", active: false },
+      { key: "UCAYALI", name: "Ucayali", city: "Pucallpa", inspectors: 0, pct: "0.0%", active: false }
+    ];
+
+    // Estado global de interacción
+    let state = {
+      displayMode: 'pct',      // 'pct' | 'count'
+      coverageFilter: 'all',   // 'all' | 'covered' | 'expansion'
+      selectedDept: null,      // key del departamento seleccionado (ej. "LIMA") o null
+      geoFeatures: []          // Features GeoJSON cargadas
+    };
+
+    /**
+     * Normaliza nombres de departamentos provenientes del GeoJSON/TopoJSON
+     * (elimina tildes y convierte a mayúsculas para coincidencia exacta)
+     */
+    function normalizeDeptName(rawName) {
+      if (!rawName) return "";
+      const clean = rawName
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase()
+        .trim();
+      // El Callao suele venir como "CALLAO" o "PROVINCIA CONSTITUCIONAL DEL CALLAO"
+      if (clean.includes("CALLAO")) return "CALLAO";
+      return clean;
+    }
+
+    /**
+     * ============================================================================
+     * 2. CARGA Y RENDERIZADO DEL MAPA VECTORIAL DEL PERÚ (D3 + TOPOJSON)
+     * ============================================================================
+     */
+    async function initMap() {
+      // Fuentes confiables de TopoJSON/GeoJSON departamental del Perú
+      const mapSources = [
+        "https://raw.githubusercontent.com/juaneladio/peru-geojson/master/peru_departamental_simple.geojson",
+        "https://cdn.jsdelivr.net/gh/deldersveld/topojson@master/countries/peru/peru-departments.json"
+      ];
+
+      let geoData = null;
+
+      for (const url of mapSources) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) continue;
+          const data = await response.json();
+
+          if (data.type === "Topology") {
+            const firstKey = Object.keys(data.objects)[0];
+            geoData = topojson.feature(data, data.objects[firstKey]);
+          } else if (data.type === "FeatureCollection") {
+            geoData = data;
+          }
+          if (geoData && geoData.features && geoData.features.length > 0) {
+            break;
+          }
+        } catch (err) {
+          console.warn("Intentando fuente cartográfica alternativa...", err);
+        }
+      }
+
+      if (!geoData) {
+        document.getElementById("map-loader").innerHTML = `
+          <div class="text-center p-6 text-rose-600">
+            <p class="font-bold text-sm">No se pudo cargar la cartografía externa</p>
+            <p class="text-xs text-slate-500 mt-1">Verifica tu conexión a internet para descargar los polígonos del Perú.</p>
+          </div>`;
+        return;
+      }
+
+      state.geoFeatures = geoData.features;
+
+      // Ocultar loader y mostrar SVG
+      document.getElementById("map-loader").classList.add("hidden");
+      const svg = d3.select("#peru-infographic-svg");
+      svg.classed("hidden", false);
+
+      renderMapGeometry(geoData);
+      renderDistributionBar();
+      renderTable();
+    }
+
+    /**
+     * Dibuja los polígonos de los 24 departamentos (+ Callao) y las líneas infográficas
+     */
+    function renderMapGeometry(geoData) {
+      const svg = d3.select("#peru-infographic-svg");
+      const deptLayer = svg.select("#departments-layer");
+      const calloutsLayer = svg.select("#callouts-layer");
+
+      deptLayer.selectAll("*").remove();
+      calloutsLayer.selectAll("*").remove();
+
+      // Proyección centrada en el área central del viewBox (920x690),
+      // dejando márgenes amplios a izquierda (0..265) y derecha (655..920) para las etiquetas infográficas
+      const projection = d3.geoMercator()
+        .fitExtent([[275, 28], [645, 662]], geoData);
+
+      const pathGenerator = d3.geoPath().projection(projection);
+
+      // Almacena centroides calculados de cada departamento
+      const centroids = {};
+
+      // Dibujar cada departamento
+      deptLayer.selectAll("path")
+        .data(geoData.features)
+        .enter()
+        .append("path")
+        .attr("d", pathGenerator)
+        .attr("class", "dept-path")
+        .attr("data-dept", d => {
+          const props = d.properties || {};
+          const raw = props.NOMBDEP || props.NAME_1 || props.name || props.DEPARTAMEN || "";
+          return normalizeDeptName(raw);
+        })
+        .attr("fill", d => getDeptFillColor(d))
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 1.35)
+        .attr("stroke-linejoin", "round")
+        .each(function(d) {
+          const key = d3.select(this).attr("data-dept");
+          const c = pathGenerator.centroid(d);
+          if (!isNaN(c[0]) && !isNaN(c[1])) {
+            centroids[key] = c;
+          }
+        })
+        .on("mouseenter", function(event, d) {
+          const key = d3.select(this).attr("data-dept");
+          handleDeptHover(event, key, true);
+        })
+        .on("mousemove", function(event) {
+          moveTooltip(event);
+        })
+        .on("mouseleave", function(event, d) {
+          const key = d3.select(this).attr("data-dept");
+          handleDeptHover(event, key, false);
+        })
+        .on("click", function(event, d) {
+          const key = d3.select(this).attr("data-dept");
+          toggleSelectDepartment(key === "CALLAO" ? "LIMA" : key);
+        });
+
+      // Dibujar las etiquetas estilo infografía alrededor del mapa (como en la imagen de referencia)
+      Object.entries(ACTIVE_COVERAGE).forEach(([key, info]) => {
+        const centroid = centroids[key];
+        if (!centroid) return;
+
+        const anchorX = centroid[0] + (info.anchorOffset?.[0] || 0);
+        const anchorY = centroid[1] + (info.anchorOffset?.[1] || 0);
+        const isLeft = info.side === "left";
+
+        // Coordenadas horizontales de la línea conectora y bloque de texto
+        const labelY = info.labelY;
+        const elbowX = isLeft ? anchorX - 24 : anchorX + 24;
+        const lineEndX = isLeft ? 20 : 900;
+        const textAnchor = isLeft ? "start" : "end";
+        const textX = isLeft ? 22 : 898;
+
+        const group = calloutsLayer.append("g")
+          .attr("class", "callout-group")
+          .attr("data-callout", key)
+          .on("mouseenter", (event) => handleDeptHover(event, key, true))
+          .on("mousemove", (event) => moveTooltip(event))
+          .on("mouseleave", (event) => handleDeptHover(event, key, false))
+          .on("click", () => toggleSelectDepartment(key));
+
+        // Línea conectora limpia en gris neutro (con quiebre suave si hay diferencia vertical)
+        const points = Math.abs(anchorY - labelY) < 8
+          ? `${anchorX},${anchorY} ${lineEndX},${labelY}`
+          : `${anchorX},${anchorY} ${elbowX},${labelY} ${lineEndX},${labelY}`;
+
+        group.append("polyline")
+          .attr("points", points)
+          .attr("fill", "none")
+          .attr("stroke", "#94a3b8")
+          .attr("stroke-width", 1.35)
+          .attr("stroke-linecap", "round")
+          .attr("stroke-linejoin", "round");
+
+        // Punto de anclaje sobre el departamento (halo blanco + núcleo oscuro/color)
+        group.append("circle")
+          .attr("cx", anchorX)
+          .attr("cy", anchorY)
+          .attr("r", 4.5)
+          .attr("fill", "#ffffff")
+          .attr("stroke", info.color)
+          .attr("stroke-width", 2);
+
+        group.append("circle")
+          .attr("cx", anchorX)
+          .attr("cy", anchorY)
+          .attr("r", 2)
+          .attr("fill", "#0f172a");
+
+        // Valor principal grande en tipografía condensada del color del departamento
+        const bigValueText = state.displayMode === "pct"
+          ? info.pct
+          : `${info.inspectors}`;
+
+        const bigNumber = group.append("text")
+          .attr("class", "callout-big-value font-infographic")
+          .attr("x", textX)
+          .attr("y", labelY - 7)
+          .attr("text-anchor", textAnchor)
+          .attr("fill", info.color)
+          .attr("font-size", "34px")
+          .attr("font-weight", "800")
+          .text(bigValueText);
+
+        // Etiqueta secundaria alineada junto al número grande (Departamento + Ciudad Sede)
+        const numberWidthEstimate = bigValueText.length * 16.5 + 8;
+        const metaX = isLeft ? textX + numberWidthEstimate : textX - numberWidthEstimate;
+
+        group.append("text")
+          .attr("class", "callout-dept-title")
+          .attr("x", metaX)
+          .attr("y", labelY - 21)
+          .attr("text-anchor", textAnchor)
+          .attr("fill", info.color)
+          .attr("font-size", "12px")
+          .attr("font-weight", "800")
+          .text(info.name.toUpperCase());
+
+        group.append("text")
+          .attr("class", "callout-dept-sub")
+          .attr("x", metaX)
+          .attr("y", labelY - 8)
+          .attr("text-anchor", textAnchor)
+          .attr("fill", "#64748b")
+          .attr("font-size", "10.5px")
+          .attr("font-weight", "500")
+          .text(`Sede ${info.city} · ${info.inspectors} ${info.inspectors === 1 ? 'insp.' : 'insp.'}`);
+      });
+
+      updateMapVisualStates();
+    }
+
+    /**
+     * Devuelve el color de relleno según cobertura y filtros activos
+     */
+    function getDeptFillColor(feature) {
+      const props = feature.properties || {};
+      const raw = props.NOMBDEP || props.NAME_1 || props.name || props.DEPARTAMEN || "";
+      const key = normalizeDeptName(raw);
+
+      // Callao comparte visualmente el estado de Lima para continuidad costera
+      const lookupKey = key === "CALLAO" ? "LIMA" : key;
+      const activeInfo = ACTIVE_COVERAGE[lookupKey];
+
+      if (activeInfo) {
+        if (state.coverageFilter === "expansion") return "#e2e8f0";
+        return activeInfo.color;
+      }
+      return "#e2e8f0"; // Gris claro exacto solicitado para departamentos sin cobertura
+    }
+
+    /**
+     * Actualiza opacidades, bordes y etiquetas del mapa según selección y filtros
+     */
+    function updateMapVisualStates() {
+      const svg = d3.select("#peru-infographic-svg");
+
+      svg.selectAll(".dept-path")
+        .attr("fill", d => getDeptFillColor(d))
+        .attr("opacity", function() {
+          const rawKey = d3.select(this).attr("data-dept");
+          const key = rawKey === "CALLAO" ? "LIMA" : rawKey;
+          const isCovered = Boolean(ACTIVE_COVERAGE[key]);
+
+          if (state.selectedDept) {
+            return key === state.selectedDept ? 1 : 0.28;
+          }
+          if (state.coverageFilter === "covered") {
+            return isCovered ? 1 : 0.45;
+          }
+          if (state.coverageFilter === "expansion") {
+            return !isCovered ? 1 : 0.35;
+          }
+          return 1;
+        })
+        .attr("stroke", function() {
+          const rawKey = d3.select(this).attr("data-dept");
+          const key = rawKey === "CALLAO" ? "LIMA" : rawKey;
+          if (state.selectedDept && key === state.selectedDept) return "#0f172a";
+          return "#ffffff";
+        })
+        .attr("stroke-width", function() {
+          const rawKey = d3.select(this).attr("data-dept");
+          const key = rawKey === "CALLAO" ? "LIMA" : rawKey;
+          if (state.selectedDept && key === state.selectedDept) return 2.4;
+          return 1.35;
+        });
+
+      // Actualizar etiquetas infográficas
+      svg.selectAll(".callout-group")
+        .classed("dimmed", function() {
+          const key = d3.select(this).attr("data-callout");
+          if (state.coverageFilter === "expansion") return true;
+          if (state.selectedDept && key !== state.selectedDept) return true;
+          return false;
+        })
+        .classed("active-highlight", function() {
+          const key = d3.select(this).attr("data-callout");
+          return state.selectedDept === key;
+        });
+
+      // Actualizar texto grande si cambia entre Porcentaje (%) y Cantidad de Inspectores
+      svg.selectAll(".callout-group").each(function() {
+        const group = d3.select(this);
+        const key = group.attr("data-callout");
+        const info = ACTIVE_COVERAGE[key];
+        if (!info) return;
+
+        const isLeft = info.side === "left";
+        const textX = isLeft ? 22 : 898;
+        const bigValueText = state.displayMode === "pct"
+          ? info.pct
+          : `${info.inspectors}`;
+
+        group.select(".callout-big-value").text(bigValueText);
+
+        const numberWidthEstimate = bigValueText.length * 16.5 + 8;
+        const metaX = isLeft ? textX + numberWidthEstimate : textX - numberWidthEstimate;
+
+        group.select(".callout-dept-title").attr("x", metaX);
+        group.select(".callout-dept-sub")
+          .attr("x", metaX)
+          .text(
+            state.displayMode === "pct"
+              ? `Sede ${info.city} · ${info.inspectors} ${info.inspectors === 1 ? 'inspector' : 'inspectores'}`
+              : `Sede ${info.city} · ${info.pct} del total`
+          );
+      });
+    }
+
+    /**
+     * ============================================================================
+     * 3. INTERACCIONES: TOOLTIP, SELECCIÓN, FILTROS Y TABLA
+     * ============================================================================
+     */
+    function handleDeptHover(event, rawKey, isEnter) {
+      const tooltip = document.getElementById("map-tooltip");
+      if (!isEnter) {
+        tooltip.classList.add("hidden");
+        return;
+      }
+
+      const key = rawKey === "CALLAO" ? "LIMA" : rawKey;
+      const deptObj = ALL_DEPARTMENTS_LIST.find(d => d.key === key);
+      const activeInfo = ACTIVE_COVERAGE[key];
+
+      const displayName = rawKey === "CALLAO"
+        ? "Callao (Integrado a Sede Lima)"
+        : (deptObj ? deptObj.name : rawKey);
+
+      if (activeInfo) {
+        tooltip.innerHTML = `
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 rounded-full" style="background:${activeInfo.color}"></span>
+            <span class="font-bold text-white text-xs">${displayName}</span>
+          </div>
+          <div class="text-slate-300 space-y-0.5 text-[11px]">
+            <div>Ciudad sede: <strong class="text-white">${activeInfo.city}</strong></div>
+            <div>Inspectores: <strong class="text-white">${activeInfo.inspectors}</strong> (${activeInfo.pct})</div>
+            <div class="text-emerald-400 font-semibold pt-0.5">● Cobertura Activa</div>
+          </div>
+        `;
+      } else {
+        const capital = deptObj ? deptObj.city : "Capital departamental";
+        tooltip.innerHTML = `
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span class="font-bold text-white text-xs">${displayName}</span>
+          </div>
+          <div class="text-slate-300 space-y-0.5 text-[11px]">
+            <div>Ciudad ref.: <span class="text-slate-200">${capital}</span></div>
+            <div>Inspectores: <strong class="text-white">0</strong> (0.0%)</div>
+            <div class="text-amber-400 font-semibold pt-0.5">○ Oportunidad de Expansión</div>
+          </div>
+        `;
+      }
+
+      tooltip.classList.remove("hidden");
+      moveTooltip(event);
+    }
+
+    function moveTooltip(event) {
+      const tooltip = document.getElementById("map-tooltip");
+      const offset = 14;
+      let left = event.clientX + offset;
+      let top = event.clientY + offset;
+
+      // Evitar que se salga por el borde derecho o inferior
+      if (left + 210 > window.innerWidth) {
+        left = event.clientX - 210;
+      }
+      if (top + 100 > window.innerHeight) {
+        top = event.clientY - 100;
+      }
+
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+
+    function setDisplayMode(mode) {
+      state.displayMode = mode;
+
+      const btnPct = document.getElementById("btn-mode-pct");
+      const btnCount = document.getElementById("btn-mode-count");
+
+      if (mode === "pct") {
+        btnPct.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-slate-900 shadow-xs";
+        btnCount.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900";
+      } else {
+        btnCount.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-slate-900 shadow-xs";
+        btnPct.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900";
+      }
+
+      updateMapVisualStates();
+    }
+
+    function setCoverageFilter(filter) {
+      state.coverageFilter = filter;
+      document.getElementById("status-select").value = filter;
+
+      // Actualizar estilos de botones en el mapa
+      ["all", "covered", "expansion"].forEach(type => {
+        const btn = document.getElementById(`filter-map-${type}`);
+        if (type === filter) {
+          btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-white text-slate-900 shadow-xs";
+        } else {
+          btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-600 hover:text-slate-900";
+        }
+      });
+
+      updateMapVisualStates();
+      renderTable();
+    }
+
+    function onStatusSelectChange(val) {
+      setCoverageFilter(val);
+    }
+
+    function toggleSelectDepartment(deptKey) {
+      if (state.selectedDept === deptKey) {
+        resetSelection();
+        return;
+      }
+      state.selectedDept = deptKey;
+
+      const resetBtn = document.getElementById("btn-reset");
+      resetBtn.classList.remove("hidden");
+      resetBtn.classList.add("inline-flex");
+
+      updateMapVisualStates();
+      updateDetailCard(deptKey);
+      renderTable();
+    }
+
+    function resetSelection() {
+      state.selectedDept = null;
+      const resetBtn = document.getElementById("btn-reset");
+      resetBtn.classList.add("hidden");
+      resetBtn.classList.remove("inline-flex");
+
+      updateMapVisualStates();
+      updateDetailCard(null);
+      renderTable();
+    }
+
+    /**
+     * Actualiza la ficha superior derecha con los datos del departamento seleccionado
+     */
+    function updateDetailCard(deptKey) {
+      const badge = document.getElementById("detail-badge");
+      const content = document.getElementById("detail-content");
+
+      if (!deptKey) {
+        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700";
+        badge.textContent = "Vista Nacional";
+        content.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-extrabold text-slate-900">Consolidado Nacional FRMEC</h3>
+              <p class="text-xs text-slate-500 mt-0.5">Haz clic en un departamento del mapa o la tabla para analizarlo</p>
+            </div>
+            <div class="text-right">
+              <span class="text-2xl font-black text-slate-900">15</span>
+              <span class="block text-[11px] font-medium text-slate-400">Inspectores</span>
+            </div>
+          </div>
+          <div class="mt-4">
+            <div class="flex justify-between text-[11px] font-medium text-slate-500 mb-1.5">
+              <span>Distribución por sede activa (8 departamentos)</span>
+              <span>100%</span>
+            </div>
+            <div id="distribution-bar" class="w-full h-3 rounded-full overflow-hidden flex bg-slate-100 gap-0.5"></div>
+          </div>
+        `;
+        renderDistributionBar();
+        return;
+      }
+
+      const dept = ALL_DEPARTMENTS_LIST.find(d => d.key === deptKey);
+      const activeInfo = ACTIVE_COVERAGE[deptKey];
+
+      if (activeInfo) {
+        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200";
+        badge.textContent = "Cobertura Activa";
+
+        content.innerHTML = `
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-base shadow-xs shrink-0"
+                   style="background-color: ${activeInfo.color}">
+                ${activeInfo.inspectors}
+              </div>
+              <div>
+                <h3 class="text-lg font-extrabold text-slate-900">${activeInfo.name}</h3>
+                <p class="text-xs text-slate-500">Ciudad sede: <strong class="text-slate-700">${activeInfo.city}</strong></p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-2xl font-black" style="color: ${activeInfo.color}">${activeInfo.pct}</span>
+              <span class="block text-[11px] font-medium text-slate-400">Participación</span>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span class="text-slate-500">Dotación asignada: <strong class="text-slate-800">${activeInfo.inspectors} ${activeInfo.inspectors === 1 ? 'inspector' : 'inspectores'}</strong> de 15</span>
+            <button onclick="resetSelection()" class="font-semibold text-slate-600 hover:text-slate-900 underline">Ver nacional</button>
+          </div>
+        `;
+      } else if (dept) {
+        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200";
+        badge.textContent = "Oportunidad de Expansión";
+
+        content.innerHTML = `
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-11 h-11 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center font-black text-base shrink-0">
+                0
+              </div>
+              <div>
+                <h3 class="text-lg font-extrabold text-slate-900">${dept.name}</h3>
+                <p class="text-xs text-slate-500">Ciudad principal: <strong class="text-slate-700">${dept.city}</strong></p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-2xl font-black text-slate-400">0.0%</span>
+              <span class="block text-[11px] font-medium text-slate-400">Sin cobertura</span>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span class="text-slate-500">Departamento disponible para apertura de sede FRMEC</span>
+            <button onclick="resetSelection()" class="font-semibold text-slate-600 hover:text-slate-900 underline">Ver nacional</button>
+          </div>
+        `;
+      }
+    }
+
+    /**
+     * Renderiza la barra apilada proporcional de los 8 departamentos activos
+     */
+    function renderDistributionBar() {
+      const bar = document.getElementById("distribution-bar");
+      if (!bar) return;
+
+      const orderedKeys = ["LIMA", "PIURA", "LA LIBERTAD", "LAMBAYEQUE", "AREQUIPA", "ICA", "CUSCO", "JUNIN"];
+      bar.innerHTML = orderedKeys.map(key => {
+        const info = ACTIVE_COVERAGE[key];
+        const widthPct = (info.inspectors / TOTAL_INSPECTORS) * 100;
+        return `
+          <div onclick="toggleSelectDepartment('${key}')"
+               title="${info.name}: ${info.inspectors} inspectores (${info.pct})"
+               style="width: ${widthPct}%; background-color: ${info.color};"
+               class="h-full cursor-pointer hover:opacity-85 transition-opacity">
+          </div>
+        `;
+      }).join("");
+    }
+
+    /**
+     * Renderiza la tabla interactiva con búsqueda, filtros y resaltado de fila
+     */
+    function renderTable() {
+      const tbody = document.getElementById("departments-table-body");
+      const query = document.getElementById("search-input").value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+      const filtered = ALL_DEPARTMENTS_LIST.filter(item => {
+        if (state.coverageFilter === "covered" && !item.active) return false;
+        if (state.coverageFilter === "expansion" && item.active) return false;
+
+        if (query) {
+          const normName = item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const normCity = item.city.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          return normName.includes(query) || normCity.includes(query);
+        }
+        return true;
+      });
+
+      document.getElementById("table-counter").textContent =
+        `${filtered.length} ${filtered.length === 1 ? 'departamento' : 'departamentos'}`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-8 text-center text-slate-400 text-xs">
+              No se encontraron departamentos con ese criterio de búsqueda.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(item => {
+        const activeInfo = ACTIVE_COVERAGE[item.key];
+        const isSelected = state.selectedDept === item.key;
+        const dotColor = activeInfo ? activeInfo.color : "#cbd5e1";
+
+        const rowClasses = isSelected
+          ? "bg-slate-900/5 font-semibold"
+          : "hover:bg-slate-50/90";
+
+        const statusBadge = item.active
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Activa
+             </span>`
+          : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
+               Expansión
+             </span>`;
+
+        return `
+          <tr onclick="toggleSelectDepartment('${item.key}')"
+              class="cursor-pointer transition-colors ${rowClasses}">
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
+                <span class="text-slate-900 ${item.active ? 'font-bold' : 'font-medium'}">${item.name}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-3 text-slate-600">${item.city}</td>
+            <td class="py-2.5 px-3 text-center">
+              <span class="inline-block min-w-[24px] px-1.5 py-0.5 rounded-md font-bold ${item.active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}">
+                ${item.inspectors}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 text-right font-semibold ${item.active ? 'text-slate-800' : 'text-slate-400'}">
+              ${item.pct}
+            </td>
+            <td class="py-2.5 px-4 text-right">
+              ${statusBadge}
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    // Inicializar dashboard al cargar la ventana
+    window.addEventListener("DOMContentLoaded", initMap);
+  </script>
+</body>
+</html>
